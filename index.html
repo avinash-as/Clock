@@ -1,0 +1,878 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Chrono — Real-Time Clock</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700&family=JetBrains+Mono:wght@100;200;300;400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+
+  :root {
+    --font-d: 'Inter', system-ui, sans-serif;
+    --font-m: 'JetBrains Mono', ui-monospace, monospace;
+    --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+    --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  html, body {
+    height: 100%;
+    font-family: var(--font-d);
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+
+  /* ====== Dynamic background ====== */
+  body {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    transition: background 2.5s ease;
+    position: relative;
+    padding: 1rem;
+  }
+
+  body.dawn {
+    background: linear-gradient(165deg, #0f0c29 0%, #302b63 35%, #e94560 70%, #ff9a3c 100%);
+  }
+  body.day {
+    background: linear-gradient(165deg, #0f2027 0%, #203a43 40%, #2c5364 100%);
+  }
+  body.dusk {
+    background: linear-gradient(165deg, #141e30 0%, #243b55 30%, #e96443 65%, #904e95 100%);
+  }
+  body.night {
+    background: linear-gradient(165deg, #020111 0%, #0f0c29 40%, #302b63 75%, #24243e 100%);
+  }
+
+  /* ====== Animated orbs ====== */
+  .orbs {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    overflow: hidden;
+  }
+
+  .orb {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(80px);
+    opacity: 0.35;
+    animation: float 20s ease-in-out infinite alternate;
+  }
+
+  .orb-1 { width: 500px; height: 500px; background: #4f46e5; top: -15%; left: -10%; }
+  .orb-2 { width: 400px; height: 400px; background: #7c3aed; bottom: -10%; right: -5%; animation-delay: -7s; }
+  .orb-3 { width: 350px; height: 350px; background: #0891b2; top: 40%; left: 50%; animation-delay: -14s; }
+
+  @keyframes float {
+    0%   { transform: translate(0, 0) scale(1); }
+    50%  { transform: translate(40px, -30px) scale(1.1); }
+    100% { transform: translate(-20px, 20px) scale(0.95); }
+  }
+
+  /* ====== Noise overlay ====== */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.02'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  /* ====== Main container ====== */
+  .clock-container {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.5rem;
+  }
+
+  /* ====== ROUND WATCH FACE ====== */
+  .watch-face {
+    position: relative;
+    width: clamp(280px, 65vmin, 500px);
+    height: clamp(280px, 65vmin, 500px);
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, rgba(255,80,80,0.12) 0%, rgba(200,30,30,0.08) 40%, rgba(120,10,10,0.04) 100%);
+    border: 2px solid rgba(255, 60, 60, 0.35);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    box-shadow:
+      0 20px 60px rgba(180, 20, 20, 0.25),
+      0 0 40px rgba(255, 50, 50, 0.08),
+      inset 0 2px 0 rgba(255, 255, 255, 0.1),
+      inset 0 -2px 0 rgba(100, 0, 0, 0.15);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    transition: border-color 0.4s ease, box-shadow 0.4s ease;
+  }
+
+  .watch-face:hover {
+    border-color: rgba(255, 80, 80, 0.55);
+    box-shadow:
+      0 25px 70px rgba(180, 20, 20, 0.35),
+      0 0 60px rgba(255, 50, 50, 0.15),
+      inset 0 2px 0 rgba(255, 255, 255, 0.12),
+      inset 0 -2px 0 rgba(100, 0, 0, 0.15);
+  }
+
+  /* Outer ring decoration */
+  .watch-face::before {
+    content: '';
+    position: absolute;
+    inset: 12px;
+    border-radius: 50%;
+    border: 1.5px solid rgba(255, 60, 60, 0.2);
+    pointer-events: none;
+  }
+
+  .watch-face::after {
+    content: '';
+    position: absolute;
+    inset: 24px;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 60, 60, 0.1);
+    pointer-events: none;
+  }
+
+  /* ====== Second progress ring (SVG) ====== */
+  .progress-ring {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .progress-ring svg {
+    width: 100%;
+    height: 100%;
+    transform: rotate(-90deg);
+  }
+
+  .progress-ring .ring-bg {
+    fill: none;
+    stroke: rgba(255, 255, 255, 0.04);
+    stroke-width: 2;
+  }
+
+  .progress-ring .ring-fill {
+    fill: none;
+    stroke: #fbbf24;
+    stroke-width: 2.5;
+    stroke-linecap: round;
+    transition: stroke-dashoffset 0.15s linear;
+    filter: drop-shadow(0 0 4px rgba(251, 191, 36, 0.6));
+  }
+
+  /* ====== Location badge ====== */
+  .location-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4rem 1rem;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    backdrop-filter: blur(12px);
+    font-size: 0.72rem;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    color: rgba(255, 255, 255, 0.75);
+    transition: all 0.3s var(--ease-out);
+    z-index: 2;
+  }
+
+  .location-badge:hover {
+    background: rgba(255, 60, 60, 0.1);
+    border-color: rgba(255, 80, 80, 0.25);
+    transform: translateY(-1px);
+  }
+
+  .location-badge .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #fbbf24;
+    box-shadow: 0 0 6px #fbbf24;
+    animation: pulse-dot 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.7); }
+  }
+
+  /* ====== Time display with digit cells ====== */
+  .time-display {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: clamp(0.1rem, 0.4vw, 0.3rem);
+    font-family: var(--font-m);
+    font-weight: 200;
+    font-size: clamp(2.2rem, 8vmin, 4.5rem);
+    line-height: 1;
+    color: #fff;
+    font-variant-numeric: tabular-nums;
+    user-select: none;
+    -webkit-user-select: none;
+    z-index: 2;
+  }
+
+  /* Each digit cell */
+  .digit-cell {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: clamp(1.6rem, 5.5vmin, 3.2rem);
+    height: clamp(2.4rem, 8vmin, 4.5rem);
+    border-radius: clamp(6px, 1.2vmin, 12px);
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    overflow: hidden;
+    transition: border-color 0.3s ease, background 0.3s ease, box-shadow 0.3s ease;
+  }
+
+  .digit-cell:hover {
+    border-color: rgba(255, 80, 80, 0.25);
+    background: rgba(255, 60, 60, 0.06);
+  }
+
+  /* The digit character */
+  .digit {
+    position: relative;
+    z-index: 2;
+    transition: none;
+    will-change: transform, opacity;
+  }
+
+  /* Blast animation — old digit explodes away */
+  .digit.blast-out {
+    animation: blastOut 0.45s var(--ease-out) forwards;
+  }
+
+  @keyframes blastOut {
+    0%   { transform: scale(1) rotate(0deg); opacity: 1; filter: blur(0); }
+    30%  { transform: scale(1.3) rotate(-5deg); opacity: 0.8; filter: blur(1px); }
+    60%  { transform: scale(0.6) rotate(8deg); opacity: 0.4; filter: blur(3px); }
+    100% { transform: scale(0) rotate(-15deg); opacity: 0; filter: blur(8px); }
+  }
+
+  /* Bubble animation — new digit bubbles in */
+  .digit.bubble-in {
+    animation: bubbleIn 0.6s var(--ease-spring) forwards;
+  }
+
+  @keyframes bubbleIn {
+    0%   { transform: scale(0) rotate(10deg); opacity: 0; filter: blur(6px); }
+    50%  { transform: scale(1.15) rotate(-3deg); opacity: 1; filter: blur(0); }
+    70%  { transform: scale(0.95) rotate(1deg); }
+    100% { transform: scale(1) rotate(0deg); opacity: 1; filter: blur(0); }
+  }
+
+  /* Glow flash on the cell when digit changes */
+  .digit-cell.flash {
+    animation: cellFlash 0.5s var(--ease-out);
+  }
+
+  @keyframes cellFlash {
+    0%   { box-shadow: 0 0 0 rgba(255,60,60,0); border-color: rgba(255,255,255,0.05); }
+    40%  { box-shadow: 0 0 25px rgba(255,60,60,0.2), inset 0 0 15px rgba(255,60,60,0.06); border-color: rgba(255,80,80,0.35); }
+    100% { box-shadow: 0 0 0 rgba(255,60,60,0); border-color: rgba(255,255,255,0.05); }
+  }
+
+  /* ====== Colon separator ====== */
+  .colon {
+    font-size: clamp(1.5rem, 6vmin, 3.5rem);
+    font-weight: 100;
+    opacity: 0.5;
+    animation: blink 1s steps(1) infinite;
+    margin: 0 clamp(0.05rem, 0.2vw, 0.2rem);
+    line-height: 1;
+    align-self: center;
+  }
+
+  @keyframes blink {
+    50% { opacity: 0.1; }
+  }
+
+  /* ====== Seconds smaller ====== */
+  .seconds-group {
+    display: flex;
+    gap: clamp(0.08rem, 0.25vw, 0.2rem);
+    margin-left: clamp(0.2rem, 0.8vw, 0.6rem);
+    align-self: flex-end;
+    margin-bottom: clamp(0.2rem, 0.8vw, 0.6rem);
+  }
+
+  .seconds-group .digit-cell {
+    width: clamp(1.1rem, 3.5vmin, 2.2rem);
+    height: clamp(1.6rem, 5vmin, 3rem);
+    border-radius: clamp(4px, 0.8vmin, 8px);
+    border-color: rgba(251, 191, 36, 0.15);
+    background: rgba(251, 191, 36, 0.03);
+  }
+
+  .seconds-group .digit {
+    font-size: clamp(0.9rem, 3vmin, 2rem);
+    opacity: 0.7;
+    color: #fbbf24;
+    text-shadow: 0 0 12px rgba(251, 191, 36, 0.4);
+  }
+
+  /* ====== AM/PM badge ====== */
+  .ampm-badge {
+    align-self: flex-start;
+    margin-top: clamp(0.2rem, 0.8vw, 0.6rem);
+    margin-left: clamp(0.2rem, 0.8vw, 0.5rem);
+    padding: 0.25rem 0.6rem;
+    border-radius: 6px;
+    background: rgba(251, 191, 36, 0.08);
+    border: 1px solid rgba(251, 191, 36, 0.2);
+    font-family: var(--font-m);
+    font-size: clamp(0.5rem, 1.5vmin, 0.75rem);
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    color: rgba(251, 191, 36, 0.7);
+  }
+
+  /* ====== Date line ====== */
+  .date-line {
+    margin-top: 0.8rem;
+    font-size: clamp(0.75rem, 1.8vmin, 0.95rem);
+    font-weight: 300;
+    color: rgba(255, 255, 255, 0.45);
+    letter-spacing: 0.08em;
+    z-index: 2;
+  }
+
+  /* ====== Timezone info ====== */
+  .tz-info {
+    margin-top: 0.3rem;
+    font-family: var(--font-m);
+    font-size: 0.6rem;
+    color: rgba(255, 255, 255, 0.2);
+    letter-spacing: 0.1em;
+    z-index: 2;
+  }
+
+  /* ====== Timezone selector ====== */
+  .tz-selector {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    max-width: 600px;
+  }
+
+  .tz-btn {
+    padding: 0.4rem 0.9rem;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.035);
+    backdrop-filter: blur(8px);
+    color: rgba(255, 255, 255, 0.55);
+    font-family: var(--font-d);
+    font-size: 0.7rem;
+    font-weight: 500;
+    letter-spacing: 0.03em;
+    cursor: pointer;
+    transition: all 0.3s var(--ease-out);
+    white-space: nowrap;
+  }
+
+  .tz-btn:hover {
+    background: rgba(255, 60, 60, 0.12);
+    color: #fff;
+    border-color: rgba(255, 80, 80, 0.3);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 16px rgba(180, 20, 20, 0.25);
+  }
+
+  .tz-btn.active {
+    background: rgba(255, 60, 60, 0.18);
+    color: #fff;
+    border-color: rgba(255, 80, 80, 0.4);
+    box-shadow: 0 4px 20px rgba(180, 20, 20, 0.3);
+  }
+
+  /* ====== World clock ====== */
+  .world-section {
+    position: relative;
+    z-index: 2;
+  }
+
+  .world-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 0.5rem;
+  }
+
+  .world-card {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 16px;
+    padding: 0.8rem 1rem;
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    text-align: left;
+    transition: all 0.3s var(--ease-out);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .world-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    border-radius: 16px 16px 0 0;
+  }
+
+  .world-card.day::before { background: linear-gradient(90deg, #fbbf24, #f59e0b); }
+  .world-card.night::before { background: linear-gradient(90deg, #7f1d1d, #450a0a); }
+
+  .world-card:hover {
+    background: rgba(255, 60, 60, 0.06);
+    border-color: rgba(255, 80, 80, 0.2);
+    transform: translateY(-3px);
+    box-shadow: 0 8px 24px rgba(180, 20, 20, 0.2);
+  }
+
+  .world-card .wc-name {
+    font-size: 0.62rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: rgba(255, 255, 255, 0.35);
+    margin-bottom: 0.25rem;
+  }
+
+  .world-card .wc-time {
+    font-family: var(--font-m);
+    font-size: 1.2rem;
+    font-weight: 300;
+    color: #fbbf24;
+    font-variant-numeric: tabular-nums;
+    text-shadow: 0 0 8px rgba(251, 191, 36, 0.3);
+  }
+
+  .world-card .wc-date {
+    font-size: 0.58rem;
+    color: rgba(251, 191, 36, 0.4);
+    margin-top: 0.15rem;
+    font-family: var(--font-m);
+  }
+
+  /* ====== Particle canvas ====== */
+  #particleCanvas {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 3;
+  }
+
+  /* ====== Responsive ====== */
+  @media (max-width: 768px) {
+    body { padding: 0.5rem; justify-content: flex-start; padding-top: 1rem; overflow-y: auto; }
+    .watch-face { width: min(85vw, 400px); height: min(85vw, 400px); }
+    .time-display { font-size: clamp(1.8rem, 10vw, 3rem); }
+    .digit-cell { width: clamp(1.3rem, 6vw, 2.2rem); height: clamp(2rem, 8vw, 3.2rem); }
+    .seconds-group .digit-cell { width: clamp(0.9rem, 4vw, 1.5rem); height: clamp(1.3rem, 5vw, 2.2rem); }
+    .seconds-group .digit { font-size: clamp(0.7rem, 3.5vw, 1.4rem); }
+    .colon { font-size: clamp(1.2rem, 6vw, 2.5rem); }
+    .tz-btn { padding: 0.3rem 0.65rem; font-size: 0.65rem; }
+    .world-grid { grid-template-columns: repeat(2, 1fr); gap: 0.4rem; }
+    .world-card { padding: 0.6rem 0.8rem; border-radius: 12px; }
+    .world-card .wc-time { font-size: 1rem; }
+    .orb-1 { width: 250px; height: 250px; }
+    .orb-2 { width: 200px; height: 200px; }
+    .orb-3 { width: 180px; height: 180px; }
+  }
+
+  @media (max-width: 400px) {
+    .watch-face { width: min(90vw, 320px); height: min(90vw, 320px); }
+    .time-display { font-size: 1.6rem; gap: 0.08rem; }
+    .digit-cell { border-radius: 6px; }
+    .tz-btn { padding: 0.25rem 0.5rem; font-size: 0.6rem; }
+  }
+
+  /* ====== Reduced motion ====== */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+</style>
+</head>
+<body class="day">
+
+  <!-- Animated background orbs -->
+  <div class="orbs">
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+  </div>
+
+  <!-- Particle canvas for blast effects -->
+  <canvas id="particleCanvas"></canvas>
+
+  <main class="clock-container">
+    <!-- ROUND WATCH FACE -->
+    <div class="watch-face">
+      <!-- Second progress ring -->
+      <div class="progress-ring">
+        <svg viewBox="0 0 100 100">
+          <circle class="ring-bg" cx="50" cy="50" r="48"/>
+          <circle class="ring-fill" id="secRing" cx="50" cy="50" r="48"/>
+        </svg>
+      </div>
+
+      <!-- Location -->
+      <div class="location-badge">
+        <span class="dot"></span>
+        <span id="locName">Kolkata</span>
+      </div>
+
+      <!-- Time with animated digit cells -->
+      <div class="time-display" id="timeDisplay">
+        <div class="digit-cell" data-digit="h1"><span class="digit">0</span></div>
+        <div class="digit-cell" data-digit="h2"><span class="digit">0</span></div>
+        <span class="colon">:</span>
+        <div class="digit-cell" data-digit="m1"><span class="digit">0</span></div>
+        <div class="digit-cell" data-digit="m2"><span class="digit">0</span></div>
+        <span class="colon">:</span>
+        <div class="seconds-group">
+          <div class="digit-cell" data-digit="s1"><span class="digit">0</span></div>
+          <div class="digit-cell" data-digit="s2"><span class="digit">0</span></div>
+        </div>
+        <div class="ampm-badge" id="ampm">AM</div>
+      </div>
+
+      <!-- Date -->
+      <div class="date-line" id="dateLine">—</div>
+      <div class="tz-info" id="tzInfo">—</div>
+    </div>
+
+    <!-- Timezone buttons -->
+    <div class="tz-selector" id="tzSelector"></div>
+
+    <!-- World clock -->
+    <div class="world-section">
+      <div class="world-grid" id="worldGrid"></div>
+    </div>
+  </main>
+
+<script>
+  // ====== Config ======
+  const DEFAULT_TZ = 'Asia/Kolkata';
+
+  const TIMEZONES = [
+    { id: 'Asia/Kolkata',        label: 'Kolkata' },
+    { id: 'Asia/Dubai',          label: 'Dubai' },
+    { id: 'Asia/Singapore',      label: 'Singapore' },
+    { id: 'Asia/Shanghai',       label: 'Shanghai' },
+    { id: 'Asia/Tokyo',          label: 'Tokyo' },
+    { id: 'Asia/Seoul',          label: 'Seoul' },
+    { id: 'Asia/Bangkok',        label: 'Bangkok' },
+    { id: 'Asia/Dhaka',          label: 'Dhaka' },
+    { id: 'Asia/Karachi',        label: 'Karachi' },
+    { id: 'Asia/Hong_Kong',      label: 'Hong Kong' },
+    { id: 'Australia/Sydney',    label: 'Sydney' },
+    { id: 'Europe/London',       label: 'London' },
+    { id: 'Europe/Paris',        label: 'Paris' },
+    { id: 'America/New_York',    label: 'New York' },
+    { id: 'America/Los_Angeles', label: 'LA' },
+    { id: 'UTC',                 label: 'UTC' },
+  ];
+
+  const WORLD_CITIES = [
+    { name: 'New York', tz: 'America/New_York' },
+    { name: 'London',   tz: 'Europe/London' },
+    { name: 'Tokyo',    tz: 'Asia/Tokyo' },
+    { name: 'Sydney',   tz: 'Australia/Sydney' },
+  ];
+
+  let activeTz = DEFAULT_TZ;
+  let prevDigits = {};
+
+  // ====== DOM refs ======
+  const $ = id => document.getElementById(id);
+  const els = {
+    locName: $('locName'),
+    dateLine: $('dateLine'),
+    tzInfo: $('tzInfo'),
+    ampm: $('ampm'),
+    tzSelector: $('tzSelector'),
+    worldGrid: $('worldGrid'),
+    body: document.body,
+    canvas: $('particleCanvas'),
+    secRing: $('secRing'),
+  };
+
+  const ctx = els.canvas.getContext('2d');
+  let particles = [];
+
+  // Circumference for progress ring
+  const CIRC = 2 * Math.PI * 48;
+  els.secRing.style.strokeDasharray = CIRC;
+
+  // ====== Canvas setup ======
+  function resizeCanvas() {
+    els.canvas.width = window.innerWidth;
+    els.canvas.height = window.innerHeight;
+  }
+  window.addEventListener('resize', resizeCanvas);
+  resizeCanvas();
+
+  // ====== Particle system ======
+  class Particle {
+    constructor(x, y, color) {
+      this.x = x;
+      this.y = y;
+      this.vx = (Math.random() - 0.5) * 12;
+      this.vy = (Math.random() - 0.5) * 12 - 3;
+      this.life = 1;
+      this.decay = 0.015 + Math.random() * 0.02;
+      this.size = 2 + Math.random() * 4;
+      this.color = color;
+      this.gravity = 0.15;
+    }
+
+    update() {
+      this.x += this.vx;
+      this.y += this.vy;
+      this.vy += this.gravity;
+      this.vx *= 0.98;
+      this.life -= this.decay;
+      this.size *= 0.97;
+    }
+
+    draw(ctx) {
+      ctx.save();
+      ctx.globalAlpha = this.life;
+      ctx.fillStyle = this.color;
+      ctx.shadowBlur = 10;
+      ctx.shadowColor = this.color;
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  function spawnBurst(x, y, count = 20) {
+    const colors = ['#fff', '#a5b4fc', '#c4b5fd', '#67e8f9', '#fbbf24'];
+    for (let i = 0; i < count; i++) {
+      particles.push(new Particle(x, y, colors[Math.floor(Math.random() * colors.length)]));
+    }
+  }
+
+  function animateParticles() {
+    ctx.clearRect(0, 0, els.canvas.width, els.canvas.height);
+    particles = particles.filter(p => p.life > 0);
+    for (const p of particles) {
+      p.update();
+      p.draw(ctx);
+    }
+    requestAnimationFrame(animateParticles);
+  }
+  animateParticles();
+
+  // ====== Helpers ======
+  function getParts(date, timeZone) {
+    const dtf = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+      hour12: true,
+      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+      timeZoneName: 'short',
+    });
+    const parts = {};
+    for (const p of dtf.formatToParts(date)) parts[p.type] = p.value;
+    return parts;
+  }
+
+  function getOffsetLabel(date, timeZone) {
+    const dtf = new Intl.DateTimeFormat('en-US', {
+      timeZone, hour12: false,
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+    });
+    const parts = {};
+    for (const p of dtf.formatToParts(date)) parts[p.type] = p.value;
+    const asUTC = Date.UTC(+parts.year, +parts.month - 1, +parts.day, +parts.hour % 24, +parts.minute, +parts.second);
+    const mins = Math.round((asUTC - date.getTime()) / 60000);
+    const sign = mins >= 0 ? '+' : '\u2212';
+    const abs = Math.abs(mins);
+    const h = String(Math.floor(abs / 60)).padStart(2, '0');
+    const m = String(abs % 60).padStart(2, '0');
+    return `UTC${sign}${h}:${m}`;
+  }
+
+  function getTimeOfDay(date, timeZone) {
+    const h = +new Intl.DateTimeFormat('en-US', {
+      timeZone, hour: 'numeric', hour12: false,
+    }).format(date);
+    if (h >= 5 && h < 8) return 'dawn';
+    if (h >= 8 && h < 17) return 'day';
+    if (h >= 17 && h < 20) return 'dusk';
+    return 'night';
+  }
+
+  function isDaytime(date, timeZone) {
+    const h = +new Intl.DateTimeFormat('en-US', {
+      timeZone, hour: 'numeric', hour12: false,
+    }).format(date);
+    return h >= 6 && h < 18;
+  }
+
+  // ====== Animated digit update ======
+  function updateDigit(cell, newVal) {
+    const key = cell.dataset.digit;
+    const digitEl = cell.querySelector('.digit');
+    const oldVal = prevDigits[key];
+
+    if (oldVal === newVal) return;
+
+    // Get cell position for particle burst
+    const rect = cell.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+
+    // Blast out old digit
+    if (oldVal !== undefined) {
+      digitEl.classList.add('blast-out');
+      spawnBurst(cx, cy, 15);
+    }
+
+    // After blast completes, swap and bubble in
+    const doSwap = () => {
+      digitEl.classList.remove('blast-out', 'bubble-in');
+      digitEl.textContent = newVal;
+      digitEl.classList.add('bubble-in');
+      cell.classList.add('flash');
+
+      // Cleanup
+      setTimeout(() => {
+        digitEl.classList.remove('bubble-in');
+        cell.classList.remove('flash');
+      }, 600);
+    };
+
+    if (oldVal !== undefined) {
+      setTimeout(doSwap, 200);
+    } else {
+      doSwap();
+    }
+
+    prevDigits[key] = newVal;
+  }
+
+  // ====== Render hero ======
+  function renderHero(now) {
+    const parts = getParts(now, activeTz);
+    const h12 = parts.hour === '24' ? '12' : parts.hour;
+    const hh = h12.padStart(2, '0');
+    const mm = parts.minute;
+    const ss = parts.second;
+
+    // Update animated digits
+    const timeDisplay = $('timeDisplay');
+    const cells = timeDisplay.querySelectorAll('.digit-cell');
+    const digitMap = { h1: hh[0], h2: hh[1], m1: mm[0], m2: mm[1], s1: ss[0], s2: ss[1] };
+
+    cells.forEach(cell => {
+      const key = cell.dataset.digit;
+      updateDigit(cell, digitMap[key]);
+    });
+
+    // AM/PM
+    els.ampm.textContent = parts.dayPeriod || '';
+
+    // Date & tz
+    els.dateLine.textContent = `${parts.weekday}, ${parts.month} ${parts.day}, ${parts.year}`;
+    els.tzInfo.textContent = `${activeTz} · ${getOffsetLabel(now, activeTz)}`;
+
+    // Location
+    const tzObj = TIMEZONES.find(t => t.id === activeTz);
+    els.locName.textContent = tzObj ? tzObj.label : activeTz.replace(/_/g, ' ');
+
+    // Background theme
+    const tod = getTimeOfDay(now, activeTz);
+    if (!els.body.classList.contains(tod)) {
+      els.body.className = tod;
+    }
+
+    // Progress ring (seconds)
+    const sec = +parts.second;
+    const offset = CIRC * (1 - sec / 60);
+    els.secRing.style.strokeDashoffset = offset;
+  }
+
+  // ====== Render world clock ======
+  function renderWorld(now) {
+    els.worldGrid.innerHTML = '';
+    for (const city of WORLD_CITIES) {
+      const parts = getParts(now, city.tz);
+      const h12 = parts.hour === '24' ? '12' : parts.hour;
+      const day = isDaytime(now, city.tz);
+
+      const card = document.createElement('div');
+      card.className = `world-card ${day ? 'day' : 'night'}`;
+      card.innerHTML = `
+        <div class="wc-name">${city.name}</div>
+        <div class="wc-time">${h12}:${parts.minute} <span style="font-size:0.5em;opacity:0.5">${parts.dayPeriod || ''}</span></div>
+        <div class="wc-date">${parts.weekday}, ${parts.month} ${parts.day}</div>
+      `;
+      els.worldGrid.appendChild(card);
+    }
+  }
+
+  // ====== Timezone buttons ======
+  function buildTzButtons() {
+    els.tzSelector.innerHTML = '';
+    for (const tz of TIMEZONES) {
+      const btn = document.createElement('button');
+      btn.className = 'tz-btn' + (tz.id === activeTz ? ' active' : '');
+      btn.textContent = tz.label;
+      btn.addEventListener('click', () => {
+        activeTz = tz.id;
+        buildTzButtons();
+        renderHero(new Date());
+        renderWorld(new Date());
+      });
+      els.tzSelector.appendChild(btn);
+    }
+  }
+
+  // ====== Loop ======
+  function tick() {
+    const now = new Date();
+    renderHero(now);
+    renderWorld(now);
+    requestAnimationFrame(tick);
+  }
+
+  // ====== Init ======
+  buildTzButtons();
+  tick();
+</script>
+</body>
+</html>
